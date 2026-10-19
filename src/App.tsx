@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { supabase } from './supabase'
+import type { Session } from '@supabase/supabase-js'
+import Auth from './Auth'
 
 type Step = { id: string; title: string; done: boolean }
 type Task = { id: string; title: string; steps: Step[] }
@@ -6,6 +9,14 @@ type Task = { id: string; title: string; steps: Step[] }
 const XP_PER_STEP = 10
 const XP_PER_LEVEL = 50
 const FOCUS_SECONDS = 5 * 60
+function load<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
+}
 
 function formatTime(total: number) {
   const m = Math.floor(total / 60)
@@ -93,7 +104,7 @@ function TaskCard({
   const percent =
     task.steps.length === 0 ? 0 : Math.round((doneCount / task.steps.length) * 100)
   const hasOpenStep = task.steps.some((s) => !s.done)
-
+ 
   function submitStep() {
     onAddStep(stepText)
     setStepText('')
@@ -159,11 +170,18 @@ function TaskCard({
   )
 }
 
-function App() {
+function Tracker({ onSignOut }: { onSignOut: () => void }) {
   const [text, setText] = useState('')
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [xp, setXp] = useState(0)
+  const [tasks, setTasks] = useState<Task[]>(() => load('tinysteps-tasks', []))
+  const [xp, setXp] = useState<number>(() => load('tinysteps-xp', 0))
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
+  useEffect(() => {
+  localStorage.setItem('tinysteps-tasks', JSON.stringify(tasks))
+}, [tasks])
+
+useEffect(() => {
+  localStorage.setItem('tinysteps-xp', JSON.stringify(xp))
+}, [xp])
 
   const level = Math.floor(xp / XP_PER_LEVEL) + 1
   const xpInLevel = xp % XP_PER_LEVEL
@@ -206,7 +224,12 @@ function App() {
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="mx-auto max-w-md">
         <div className="mb-6 flex items-end justify-between">
-          <h1 className="text-3xl font-bold text-indigo-600">TinySteps</h1>
+          <div>
+  <h1 className="text-3xl font-bold text-indigo-600">TinySteps</h1>
+  <button className="text-xs text-slate-500 underline" onClick={onSignOut}>
+    Sign out
+  </button>
+</div>
           <div className="w-32 text-right">
             <p className="text-sm font-semibold">Level {level}</p>
             <div className="mt-1 h-2 rounded-full bg-slate-200">
@@ -260,6 +283,26 @@ function App() {
       </div>
     </div>
   )
+}
+
+function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setLoading(false)
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+    })
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  if (loading) return <p className="p-8 text-slate-500">Loading…</p>
+  if (!session) return <Auth />
+  return <Tracker onSignOut={() => supabase.auth.signOut()} />
 }
 
 export default App
