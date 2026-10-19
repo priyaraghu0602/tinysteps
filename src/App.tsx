@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import type { Session } from '@supabase/supabase-js'
 import Auth from './Auth'
 
 type Step = { id: string; title: string; done: boolean }
-type Task = { id: string; title: string; steps: Step[] }
+type Task = { id: string; title: string; dueAt: string | null; steps: Step[] }
 
 const XP_PER_STEP = 10
 const XP_PER_LEVEL = 50
@@ -15,6 +15,22 @@ function formatTime(total: number) {
   const m = Math.floor(total / 60)
   const s = total % 60
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function toLocalInput(iso: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatDue(iso: string) {
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 function FocusView({
@@ -86,11 +102,13 @@ function TaskCard({
   onAddStep,
   onToggleStep,
   onFocus,
+  onSetDue,
 }: {
   task: Task
   onAddStep: (title: string) => void
   onToggleStep: (stepId: string) => void
   onFocus: () => void
+  onSetDue: (value: string) => void
 }) {
   const [stepText, setStepText] = useState('')
   const doneCount = task.steps.filter((s) => s.done).length
@@ -126,6 +144,16 @@ function TaskCard({
       <p className="mt-1 text-sm text-slate-500">
         {doneCount} of {task.steps.length} steps done
       </p>
+      <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+  <label htmlFor={`due-${task.id}`}>Due:</label>
+  <input
+    id={`due-${task.id}`}
+    type="datetime-local"
+    className="rounded-lg border border-slate-300 px-2 py-1"
+    value={toLocalInput(task.dueAt)}
+    onChange={(e) => onSetDue(e.target.value)}
+  />
+</div>
 
       <ul className="mt-3 space-y-1">
         {task.steps.map((step) => (
@@ -164,7 +192,7 @@ function TaskCard({
 }
 
 type StepRow = { id: string; title: string; done: boolean; position: number }
-type TaskRow = { id: string; title: string; steps: StepRow[] }
+type TaskRow = { id: string; title: string; due_at: string | null; steps: StepRow[] }
 
 function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
   const [text, setText] = useState('')
@@ -179,7 +207,7 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
       const [tasksRes, profileRes] = await Promise.all([
         supabase
           .from('tasks')
-          .select('id, title, steps(id, title, done, position)')
+          .select('id, title, due_at, steps(id, title, done, position)')
           .order('created_at'),
         supabase.from('profiles').select('xp').maybeSingle(),
       ])
@@ -192,6 +220,7 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
           rows.map((t) => ({
             id: t.id,
             title: t.title,
+            dueAt: t.due_at,
             steps: [...t.steps]
               .sort((a, b) => a.position - b.position)
               .map((s) => ({ id: s.id, title: s.title, done: s.done })),
@@ -204,6 +233,37 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
     loadData()
   }, [])
 
+  const [now, setNow] = useState(() => Date.now())
+const [permission, setPermission] = useState<NotificationPermission>(
+  'Notification' in window ? Notification.permission : 'denied'
+)
+const notified = useRef<Set<string>>(new Set())
+
+useEffect(() => {
+  const id = setInterval(() => setNow(Date.now()), 30000)
+  return () => clearInterval(id)
+}, [])
+
+const dueTasks = tasks.filter(
+  (t) =>
+    t.dueAt &&
+    new Date(t.dueAt).getTime() <= now &&
+    (t.steps.length === 0 || t.steps.some((s) => !s.done))
+)
+
+useEffect(() => {
+  if (permission !== 'granted') return
+  for (const t of dueTasks) {
+    if (notified.current.has(t.id + t.dueAt)) continue
+    notified.current.add(t.id + t.dueAt)
+    new Notification('TinySteps', { body: `Time to start: ${t.title}` })
+  }
+})
+
+async function enableReminders() {
+  setPermission(await Notification.requestPermission())
+}
+
   const level = Math.floor(xp / XP_PER_LEVEL) + 1
   const xpInLevel = xp % XP_PER_LEVEL
   const focusTask = tasks.find((t) => t.id === focusTaskId)
@@ -215,13 +275,16 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
     const { data, error } = await supabase
       .from('tasks')
       .insert({ title })
-      .select('id, title')
+      .select('id, title, due_at')
       .single()
     if (error) {
       setError(error.message)
       return
     }
-    setTasks((prev) => [...prev, { id: data.id, title: data.title, steps: [] }])
+    setTasks((prev) => [
+  ...prev,
+  { id: data.id, title: data.title, dueAt: data.due_at, steps: [] },
+])
   }
 
   async function addStep(taskId: string, title: string) {
@@ -242,6 +305,13 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
       prev.map((t) => (t.id === taskId ? { ...t, steps: [...t.steps, newStep] } : t))
     )
   }
+
+  async function setDue(taskId: string, value: string) {
+  const iso = value ? new Date(value).toISOString() : null
+  setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, dueAt: iso } : t)))
+  const { error } = await supabase.from('tasks').update({ due_at: iso }).eq('id', taskId)
+  if (error) setError(error.message)
+}
 
   async function toggleStep(taskId: string, stepId: string) {
     const step = tasks.find((t) => t.id === taskId)?.steps.find((s) => s.id === stepId)
@@ -306,6 +376,34 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
           />
         ) : (
           <>
+            {permission === 'default' && (
+              <button
+                className="mb-4 w-full rounded-lg bg-slate-100 py-2 text-sm text-slate-700 hover:bg-slate-200"
+                onClick={enableReminders}
+              >
+                🔔 Turn on reminders
+              </button>
+            )}
+
+            {dueTasks.length > 0 && (
+              <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <h2 className="mb-2 font-semibold text-amber-800">Due now</h2>
+                <ul className="space-y-2">
+                  {dueTasks.map((t) => (
+                    <li key={t.id} className="flex items-center justify-between gap-2">
+                      <span>{t.title}</span>
+                      <button
+                        className="rounded-lg bg-amber-500 px-3 py-1 text-sm text-white hover:bg-amber-600"
+                        onClick={() => setFocusTaskId(t.id)}
+                      >
+                        Start
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="mb-4 flex gap-2">
               <input
                 className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
@@ -330,6 +428,7 @@ function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void 
                   onAddStep={(title) => addStep(task.id, title)}
                   onToggleStep={(stepId) => toggleStep(task.id, stepId)}
                   onFocus={() => setFocusTaskId(task.id)}
+                  onSetDue={(value) => setDue(task.id, value)}
                 />
               ))}
             </ul>
