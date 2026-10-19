@@ -9,14 +9,7 @@ type Task = { id: string; title: string; steps: Step[] }
 const XP_PER_STEP = 10
 const XP_PER_LEVEL = 50
 const FOCUS_SECONDS = 5 * 60
-function load<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
+
 
 function formatTime(total: number) {
   const m = Math.floor(total / 60)
@@ -170,66 +163,122 @@ function TaskCard({
   )
 }
 
-function Tracker({ onSignOut }: { onSignOut: () => void }) {
-  const [text, setText] = useState('')
-  const [tasks, setTasks] = useState<Task[]>(() => load('tinysteps-tasks', []))
-  const [xp, setXp] = useState<number>(() => load('tinysteps-xp', 0))
-  const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
-  useEffect(() => {
-  localStorage.setItem('tinysteps-tasks', JSON.stringify(tasks))
-}, [tasks])
+type StepRow = { id: string; title: string; done: boolean; position: number }
+type TaskRow = { id: string; title: string; steps: StepRow[] }
 
-useEffect(() => {
-  localStorage.setItem('tinysteps-xp', JSON.stringify(xp))
-}, [xp])
+function Tracker({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+  const [text, setText] = useState('')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [xp, setXp] = useState(0)
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadData() {
+      const [tasksRes, profileRes] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id, title, steps(id, title, done, position)')
+          .order('created_at'),
+        supabase.from('profiles').select('xp').maybeSingle(),
+      ])
+      const failure = tasksRes.error ?? profileRes.error
+      if (failure) {
+        setError(failure.message)
+      } else {
+        const rows = tasksRes.data as TaskRow[]
+        setTasks(
+          rows.map((t) => ({
+            id: t.id,
+            title: t.title,
+            steps: [...t.steps]
+              .sort((a, b) => a.position - b.position)
+              .map((s) => ({ id: s.id, title: s.title, done: s.done })),
+          }))
+        )
+        setXp(profileRes.data?.xp ?? 0)
+      }
+      setLoading(false)
+    }
+    loadData()
+  }, [])
 
   const level = Math.floor(xp / XP_PER_LEVEL) + 1
   const xpInLevel = xp % XP_PER_LEVEL
   const focusTask = tasks.find((t) => t.id === focusTaskId)
 
-  function addTask() {
-    if (text.trim() === '') return
-    const newTask: Task = { id: crypto.randomUUID(), title: text.trim(), steps: [] }
-    setTasks([...tasks, newTask])
+  async function addTask() {
+    const title = text.trim()
+    if (title === '') return
     setText('')
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert({ title })
+      .select('id, title')
+      .single()
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setTasks((prev) => [...prev, { id: data.id, title: data.title, steps: [] }])
   }
 
-  function addStep(taskId: string, title: string) {
-    if (title.trim() === '') return
-    const newStep: Step = { id: crypto.randomUUID(), title: title.trim(), done: false }
-    setTasks(
-      tasks.map((t) => (t.id === taskId ? { ...t, steps: [...t.steps, newStep] } : t))
+  async function addStep(taskId: string, title: string) {
+    const clean = title.trim()
+    if (clean === '') return
+    const task = tasks.find((t) => t.id === taskId)
+    const { data, error } = await supabase
+      .from('steps')
+      .insert({ task_id: taskId, title: clean, position: task?.steps.length ?? 0 })
+      .select('id, title, done')
+      .single()
+    if (error) {
+      setError(error.message)
+      return
+    }
+    const newStep: Step = { id: data.id, title: data.title, done: data.done }
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, steps: [...t.steps, newStep] } : t))
     )
   }
 
-  function toggleStep(taskId: string, stepId: string) {
+  async function toggleStep(taskId: string, stepId: string) {
     const step = tasks.find((t) => t.id === taskId)?.steps.find((s) => s.id === stepId)
     if (!step) return
-    setXp(Math.max(0, xp + (step.done ? -XP_PER_STEP : XP_PER_STEP)))
-    setTasks(
-      tasks.map((t) =>
+    const newDone = !step.done
+    const newXp = Math.max(0, xp + (newDone ? XP_PER_STEP : -XP_PER_STEP))
+
+    setXp(newXp)
+    setTasks((prev) =>
+      prev.map((t) =>
         t.id === taskId
           ? {
               ...t,
-              steps: t.steps.map((s) =>
-                s.id === stepId ? { ...s, done: !s.done } : s
-              ),
+              steps: t.steps.map((s) => (s.id === stepId ? { ...s, done: newDone } : s)),
             }
           : t
       )
     )
+
+    const stepRes = await supabase.from('steps').update({ done: newDone }).eq('id', stepId)
+    if (stepRes.error) setError(stepRes.error.message)
+    const xpRes = await supabase.from('profiles').upsert({ user_id: userId, xp: newXp })
+    if (xpRes.error) setError(xpRes.error.message)
   }
+
+  if (loading) return <p className="p-8 text-slate-500">Loading your tasks…</p>
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="mx-auto max-w-md">
         <div className="mb-6 flex items-end justify-between">
           <div>
-  <h1 className="text-3xl font-bold text-indigo-600">TinySteps</h1>
-  <button className="text-xs text-slate-500 underline" onClick={onSignOut}>
-    Sign out
-  </button>
-</div>
+            <h1 className="text-3xl font-bold text-indigo-600">TinySteps</h1>
+            <button className="text-xs text-slate-500 underline" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
           <div className="w-32 text-right">
             <p className="text-sm font-semibold">Level {level}</p>
             <div className="mt-1 h-2 rounded-full bg-slate-200">
@@ -241,6 +290,12 @@ useEffect(() => {
             <p className="mt-1 text-xs text-slate-500">{xp} XP</p>
           </div>
         </div>
+
+        {error && (
+          <p className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+            Something went wrong: {error}
+          </p>
+        )}
 
         {focusTask ? (
           <FocusView
@@ -302,7 +357,13 @@ function App() {
 
   if (loading) return <p className="p-8 text-slate-500">Loading…</p>
   if (!session) return <Auth />
-  return <Tracker onSignOut={() => supabase.auth.signOut()} />
+return (
+  <Tracker
+    key={session.user.id}
+    userId={session.user.id}
+    onSignOut={() => supabase.auth.signOut()}
+  />
+)
 }
 
 export default App
