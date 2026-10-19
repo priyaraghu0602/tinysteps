@@ -331,8 +331,10 @@ async function enableReminders() {
       )
     )
 
-    const stepRes = await supabase.from('steps').update({ done: newDone }).eq('id', stepId)
-    if (stepRes.error) setError(stepRes.error.message)
+    const stepRes = await supabase
+      .from('steps')
+      .update({ done: newDone, done_at: newDone ? new Date().toISOString() : null })
+      .eq('id', stepId)
     const xpRes = await supabase.from('profiles').upsert({ user_id: userId, xp: newXp })
     if (xpRes.error) setError(xpRes.error.message)
   }
@@ -391,7 +393,12 @@ async function enableReminders() {
                 <ul className="space-y-2">
                   {dueTasks.map((t) => (
                     <li key={t.id} className="flex items-center justify-between gap-2">
-                      <span>{t.title}</span>
+                      <span>
+                        {t.title}
+                        {t.dueAt && (
+                          <span className="block text-xs text-amber-700">Due {formatDue(t.dueAt)}</span>
+                        )}
+                      </span>
                       <button
                         className="rounded-lg bg-amber-500 px-3 py-1 text-sm text-white hover:bg-amber-600"
                         onClick={() => setFocusTaskId(t.id)}
