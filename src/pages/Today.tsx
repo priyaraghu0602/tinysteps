@@ -4,6 +4,7 @@ import FocusView from '../components/FocusView'
 import TaskCard from '../components/TaskCard'
 import { formatDue } from '../lib'
 
+
 export default function Today() {
   const { tasks, dueTasks, permission, addTask, addStep, toggleStep, setDue, enableReminders } =
     useData()
@@ -79,7 +80,7 @@ export default function Today() {
         </button>
       </div>
 
-      <ul className="space-y-4">
+      <ul className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {tasks.filter((t) => !t.goalId).map((task) => (
           <TaskCard
             key={task.id}

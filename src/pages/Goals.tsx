@@ -190,9 +190,11 @@ export default function Goals() {
         </div>
       </div>
 
-      <div className="space-y-6">
+          <div className="grid items-start gap-6 xl:grid-cols-2">
         {goals.length === 0 && (
-          <p className="text-center text-muted">No goals yet. Start with one big thing. 🌱</p>
+          <p className="text-center text-muted xl:col-span-2">
+            No goals yet. Start with one big thing. 🌱
+          </p>
         )}
         {goals.map((goal) => (
           <GoalCard key={goal.id} goal={goal} onFocus={setFocusTaskId} />
@@ -200,4 +202,4 @@ export default function Goals() {
       </div>
     </>
   )
-}
+}  

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useData } from './DataContext'
 import { XP_PER_LEVEL } from './lib'
+import Plant, { PlantFloating } from './components/Plant'
 
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -34,7 +35,7 @@ export default function Layout({ onSignOut }: { onSignOut: () => void }) {
 
   return (
     <div className="min-h-screen bg-page text-ink">
-      <div className="mx-auto max-w-2xl p-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         <header className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold text-brand">TinySteps</h1>
@@ -77,8 +78,17 @@ export default function Layout({ onSignOut }: { onSignOut: () => void }) {
           </p>
         )}
 
-        {loading ? <p className="text-muted">Loading your tasks…</p> : <Outlet />}
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-8">
+          <main>{loading ? <p className="text-muted">Loading your tasks…</p> : <Outlet />}</main>
+          <aside className="hidden lg:block">
+            <div className="sticky top-6">
+              <Plant xp={xp} />
+            </div>
+          </aside>
+        </div>
       </div>
+
+      <PlantFloating xp={xp} />
     </div>
   )
 }

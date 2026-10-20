@@ -21,7 +21,7 @@ export default function FocusView({
   }, [secondsLeft])
 
   return (
-    <div className="rounded-2xl border border-line bg-card p-8 text-center shadow-sm">
+    <div className="mx-auto max-w-xl rounded-2xl border border-line bg-card p-8 text-center shadow-sm">
       <p className="text-sm uppercase tracking-wide text-muted">{task.title}</p>
 
       {step ? (
