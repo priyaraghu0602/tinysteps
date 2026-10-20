@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 import type { Goal, Step, Task } from './types'
 import { XP_PER_STEP } from './lib'
 
-type StepRow = { id: string; title: string; done: boolean; position: number }
+type StepRow = { id: string; title: string; done: boolean; position: number; created_at: string }
 type TaskRow = {
   id: string
   title: string
@@ -32,6 +32,10 @@ type DataValue = {
   addStep: (taskId: string, title: string) => Promise<void>
   toggleStep: (taskId: string, stepId: string) => Promise<void>
   setDue: (taskId: string, value: string) => Promise<void>
+  deleteTask: (taskId: string) => Promise<void>
+    deleteStep: (taskId: string, stepId: string) => Promise<void>
+    renameTask: (taskId: string, title: string) => Promise<void>
+    renameStep: (taskId: string, stepId: string, title: string) => Promise<void>
   addGoal: (title: string, why: string, targetDate: string) => Promise<void>
   toggleGoalAchieved: (goalId: string) => Promise<void>
   deleteGoal: (goalId: string) => Promise<void>
@@ -69,7 +73,7 @@ export function DataProvider({
       const [tasksRes, goalsRes, profileRes] = await Promise.all([
         supabase
           .from('tasks')
-          .select('id, title, due_at, goal_id, steps(id, title, done, position)')
+          .select('id, title, due_at, goal_id, steps(id, title, done, position, created_at)')
           .order('created_at'),
         supabase
           .from('goals')
@@ -89,7 +93,7 @@ export function DataProvider({
             dueAt: t.due_at,
             goalId: t.goal_id,
             steps: [...t.steps]
-              .sort((a, b) => a.position - b.position)
+              .sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at))
               .map((s) => ({ id: s.id, title: s.title, done: s.done })),
           }))
         )
@@ -213,6 +217,50 @@ export function DataProvider({
     if (err) setError(err.message)
   }
 
+  async function renameTask(taskId: string, title: string) {
+  const clean = title.trim()
+  if (clean === '') return
+  setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, title: clean } : t)))
+  const { error: err } = await supabase.from('tasks').update({ title: clean }).eq('id', taskId)
+  if (err) setError(err.message)
+}
+
+async function renameStep(taskId: string, stepId: string, title: string) {
+  const clean = title.trim()
+  if (clean === '') return
+  setTasks((prev) =>
+    prev.map((t) =>
+      t.id === taskId
+        ? { ...t, steps: t.steps.map((s) => (s.id === stepId ? { ...s, title: clean } : s)) }
+        : t
+    )
+  )
+  const { error: err } = await supabase.from('steps').update({ title: clean }).eq('id', stepId)
+  if (err) setError(err.message)
+}
+
+async function deleteTask(taskId: string) {
+  const { error: err } = await supabase.from('tasks').delete().eq('id', taskId)
+  if (err) {
+    setError(err.message)
+    return
+  }
+  setTasks((prev) => prev.filter((t) => t.id !== taskId))
+}
+
+async function deleteStep(taskId: string, stepId: string) {
+  const { error: err } = await supabase.from('steps').delete().eq('id', stepId)
+  if (err) {
+    setError(err.message)
+    return
+  }
+  setTasks((prev) =>
+    prev.map((t) =>
+      t.id === taskId ? { ...t, steps: t.steps.filter((s) => s.id !== stepId) } : t
+    )
+  )
+}
+
   async function addGoal(title: string, why: string, targetDate: string) {
     const clean = title.trim()
     if (clean === '') return
@@ -277,6 +325,10 @@ export function DataProvider({
         addStep,
         toggleStep,
         setDue,
+        deleteTask,
+        deleteStep,
+        renameTask,
+        renameStep,
         addGoal,
         toggleGoalAchieved,
         deleteGoal,

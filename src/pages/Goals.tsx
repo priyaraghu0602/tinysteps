@@ -12,8 +12,19 @@ function daysLeft(targetDate: string) {
 }
 
 function GoalCard({ goal, onFocus }: { goal: Goal; onFocus: (taskId: string) => void }) {
-  const { tasks, addTask, addStep, toggleStep, setDue, toggleGoalAchieved, deleteGoal } =
-    useData()
+  const {
+  tasks,
+  addTask,
+  addStep,
+  toggleStep,
+  setDue,
+  toggleGoalAchieved,
+  deleteGoal,
+  deleteTask,
+  renameTask,
+  deleteStep,
+  renameStep,
+} = useData()
   const [milestoneText, setMilestoneText] = useState('')
 
   const milestones = tasks.filter((t) => t.goalId === goal.id)
@@ -87,6 +98,10 @@ function GoalCard({ goal, onFocus }: { goal: Goal; onFocus: (taskId: string) => 
             onToggleStep={(stepId) => toggleStep(task.id, stepId)}
             onFocus={() => onFocus(task.id)}
             onSetDue={(value) => setDue(task.id, value)}
+            onDeleteTask={() => deleteTask(task.id)}
+            onRenameTask={(title) => renameTask(task.id, title)}
+            onDeleteStep={(stepId) => deleteStep(task.id, stepId)}
+            onRenameStep={(stepId, title) => renameStep(task.id, stepId, title)}
           />
         ))}
       </ul>

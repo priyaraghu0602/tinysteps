@@ -6,8 +6,21 @@ import { formatDue } from '../lib'
 
 
 export default function Today() {
-  const { tasks, dueTasks, permission, addTask, addStep, toggleStep, setDue, enableReminders } =
-    useData()
+  const {
+  tasks,
+  dueTasks,
+  permission,
+  addTask,
+  addStep,
+  toggleStep,
+  setDue,
+  deleteTask,
+  renameTask,
+  deleteStep,
+  renameStep,
+  enableReminders,
+} = useData()
+
   const [text, setText] = useState('')
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
   const focusTask = tasks.find((t) => t.id === focusTaskId)
@@ -89,6 +102,10 @@ export default function Today() {
             onToggleStep={(stepId) => toggleStep(task.id, stepId)}
             onFocus={() => setFocusTaskId(task.id)}
             onSetDue={(value) => setDue(task.id, value)}
+            onDeleteTask={() => deleteTask(task.id)}
+            onRenameTask={(title) => renameTask(task.id, title)}
+            onDeleteStep={(stepId) => deleteStep(task.id, stepId)}
+            onRenameStep={(stepId, title) => renameStep(task.id, stepId, title)}
           />
         ))}
       </ul>

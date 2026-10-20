@@ -8,12 +8,20 @@ export default function TaskCard({
   onToggleStep,
   onFocus,
   onSetDue,
+  onDeleteTask,
+  onRenameTask,
+  onDeleteStep,
+  onRenameStep,
 }: {
   task: Task
   onAddStep: (title: string) => void
   onToggleStep: (stepId: string) => void
   onFocus: () => void
   onSetDue: (value: string) => void
+  onDeleteTask: () => void
+  onRenameTask: (title: string) => void
+  onDeleteStep: (stepId: string) => void
+  onRenameStep: (stepId: string, title: string) => void
 }) {
   const [stepText, setStepText] = useState('')
   const doneCount = task.steps.filter((s) => s.done).length
@@ -26,18 +34,45 @@ export default function TaskCard({
     setStepText('')
   }
 
+  function rename() {
+    const title = window.prompt('Rename task', task.title)
+    if (title !== null) onRenameTask(title)
+  }
+
+  function remove() {
+    if (window.confirm(`Delete "${task.title}" and all its steps?`)) onDeleteTask()
+  }
+
   return (
     <li className="rounded-xl border border-line bg-card p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <h2 className="text-lg font-semibold">{task.title}</h2>
-        {hasOpenStep && (
+        <div className="flex shrink-0 items-center gap-1">
+          {hasOpenStep && (
+            <button
+              className="rounded-lg bg-brand-soft px-3 py-1 text-sm text-brand-ink hover:opacity-80"
+              onClick={onFocus}
+            >
+              Focus
+            </button>
+          )}
           <button
-            className="rounded-lg bg-brand-soft px-3 py-1 text-sm text-brand-ink hover:opacity-80"
-            onClick={onFocus}
+            className="rounded-lg px-2 py-1 text-sm text-muted hover:text-ink"
+            onClick={rename}
+            aria-label="Rename task"
+            title="Rename"
           >
-            Focus
+            ✏️
           </button>
-        )}
+          <button
+            className="rounded-lg px-2 py-1 text-sm text-muted hover:text-ink"
+            onClick={remove}
+            aria-label="Delete task"
+            title="Delete"
+          >
+            🗑️
+          </button>
+        </div>
       </div>
 
       <div className="mt-2 h-2 rounded-full bg-track">
@@ -63,17 +98,36 @@ export default function TaskCard({
 
       <ul className="mt-3 space-y-1">
         {task.steps.map((step) => (
-          <li key={step.id}>
-            <label className="flex cursor-pointer items-center gap-2">
+          <li key={step.id} className="flex items-center justify-between gap-2">
+            <label className="flex min-w-0 cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={step.done}
                 onChange={() => onToggleStep(step.id)}
               />
-              <span className={step.done ? 'text-muted line-through' : ''}>
-                {step.title}
-              </span>
+              <span className={step.done ? 'text-muted line-through' : ''}>{step.title}</span>
             </label>
+            <span className="flex shrink-0 gap-1 text-xs">
+              <button
+                className="px-1 text-muted hover:text-ink"
+                aria-label="Rename step"
+                title="Rename"
+                onClick={() => {
+                  const title = window.prompt('Rename step', step.title)
+                  if (title !== null) onRenameStep(step.id, title)
+                }}
+              >
+                ✏️
+              </button>
+              <button
+                className="px-1 text-muted hover:text-ink"
+                aria-label="Delete step"
+                title="Delete"
+                onClick={() => onDeleteStep(step.id)}
+              >
+                ✕
+              </button>
+            </span>
           </li>
         ))}
       </ul>
