@@ -1,23 +1,40 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { supabase } from './supabase'
-import type { Step, Task } from './types'
+import type { Goal, Step, Task } from './types'
 import { XP_PER_STEP } from './lib'
 
 type StepRow = { id: string; title: string; done: boolean; position: number }
-type TaskRow = { id: string; title: string; due_at: string | null; steps: StepRow[] }
+type TaskRow = {
+  id: string
+  title: string
+  due_at: string | null
+  goal_id: string | null
+  steps: StepRow[]
+}
+type GoalRow = {
+  id: string
+  title: string
+  why: string | null
+  target_date: string | null
+  achieved_at: string | null
+}
 
 type DataValue = {
   tasks: Task[]
+  goals: Goal[]
   xp: number
   loading: boolean
   error: string
   dueTasks: Task[]
   permission: NotificationPermission
-  addTask: (title: string) => Promise<void>
+  addTask: (title: string, goalId?: string) => Promise<void>
   addStep: (taskId: string, title: string) => Promise<void>
   toggleStep: (taskId: string, stepId: string) => Promise<void>
   setDue: (taskId: string, value: string) => Promise<void>
+  addGoal: (title: string, why: string, targetDate: string) => Promise<void>
+  toggleGoalAchieved: (goalId: string) => Promise<void>
+  deleteGoal: (goalId: string) => Promise<void>
   enableReminders: () => Promise<void>
 }
 
@@ -37,6 +54,7 @@ export function DataProvider({
   children: ReactNode
 }) {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [goals, setGoals] = useState<Goal[]>([])
   const [xp, setXp] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -48,26 +66,41 @@ export function DataProvider({
 
   useEffect(() => {
     async function loadData() {
-      const [tasksRes, profileRes] = await Promise.all([
+      const [tasksRes, goalsRes, profileRes] = await Promise.all([
         supabase
           .from('tasks')
-          .select('id, title, due_at, steps(id, title, done, position)')
+          .select('id, title, due_at, goal_id, steps(id, title, done, position)')
+          .order('created_at'),
+        supabase
+          .from('goals')
+          .select('id, title, why, target_date, achieved_at')
           .order('created_at'),
         supabase.from('profiles').select('xp').maybeSingle(),
       ])
-      const failure = tasksRes.error ?? profileRes.error
+      const failure = tasksRes.error ?? goalsRes.error ?? profileRes.error
       if (failure) {
         setError(failure.message)
       } else {
-        const rows = tasksRes.data as TaskRow[]
+        const taskRows = tasksRes.data as TaskRow[]
         setTasks(
-          rows.map((t) => ({
+          taskRows.map((t) => ({
             id: t.id,
             title: t.title,
             dueAt: t.due_at,
+            goalId: t.goal_id,
             steps: [...t.steps]
               .sort((a, b) => a.position - b.position)
               .map((s) => ({ id: s.id, title: s.title, done: s.done })),
+          }))
+        )
+        const goalRows = goalsRes.data as GoalRow[]
+        setGoals(
+          goalRows.map((g) => ({
+            id: g.id,
+            title: g.title,
+            why: g.why,
+            targetDate: g.target_date,
+            achievedAt: g.achieved_at,
           }))
         )
         setXp(profileRes.data?.xp ?? 0)
@@ -103,13 +136,13 @@ export function DataProvider({
     setPermission(await Notification.requestPermission())
   }
 
-  async function addTask(title: string) {
+  async function addTask(title: string, goalId?: string) {
     const clean = title.trim()
     if (clean === '') return
     const { data, error: err } = await supabase
       .from('tasks')
-      .insert({ title: clean })
-      .select('id, title, due_at')
+      .insert({ title: clean, goal_id: goalId ?? null })
+      .select('id, title, due_at, goal_id')
       .single()
     if (err) {
       setError(err.message)
@@ -117,7 +150,13 @@ export function DataProvider({
     }
     setTasks((prev) => [
       ...prev,
-      { id: data.id, title: data.title, dueAt: data.due_at, steps: [] },
+      {
+        id: data.id,
+        title: data.title,
+        dueAt: data.due_at,
+        goalId: data.goal_id,
+        steps: [],
+      },
     ])
   }
 
@@ -174,10 +213,61 @@ export function DataProvider({
     if (err) setError(err.message)
   }
 
+  async function addGoal(title: string, why: string, targetDate: string) {
+    const clean = title.trim()
+    if (clean === '') return
+    const { data, error: err } = await supabase
+      .from('goals')
+      .insert({
+        title: clean,
+        why: why.trim() === '' ? null : why.trim(),
+        target_date: targetDate === '' ? null : targetDate,
+      })
+      .select('id, title, why, target_date, achieved_at')
+      .single()
+    if (err) {
+      setError(err.message)
+      return
+    }
+    setGoals((prev) => [
+      ...prev,
+      {
+        id: data.id,
+        title: data.title,
+        why: data.why,
+        targetDate: data.target_date,
+        achievedAt: data.achieved_at,
+      },
+    ])
+  }
+
+  async function toggleGoalAchieved(goalId: string) {
+    const goal = goals.find((g) => g.id === goalId)
+    if (!goal) return
+    const value = goal.achievedAt ? null : new Date().toISOString()
+    setGoals((prev) => prev.map((g) => (g.id === goalId ? { ...g, achievedAt: value } : g)))
+    const { error: err } = await supabase
+      .from('goals')
+      .update({ achieved_at: value })
+      .eq('id', goalId)
+    if (err) setError(err.message)
+  }
+
+  async function deleteGoal(goalId: string) {
+    const { error: err } = await supabase.from('goals').delete().eq('id', goalId)
+    if (err) {
+      setError(err.message)
+      return
+    }
+    setGoals((prev) => prev.filter((g) => g.id !== goalId))
+    setTasks((prev) => prev.filter((t) => t.goalId !== goalId))
+  }
+
   return (
     <DataContext.Provider
       value={{
         tasks,
+        goals,
         xp,
         loading,
         error,
@@ -187,6 +277,9 @@ export function DataProvider({
         addStep,
         toggleStep,
         setDue,
+        addGoal,
+        toggleGoalAchieved,
+        deleteGoal,
         enableReminders,
       }}
     >

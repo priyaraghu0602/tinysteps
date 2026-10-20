@@ -80,7 +80,7 @@ export default function Today() {
       </div>
 
       <ul className="space-y-4">
-        {tasks.map((task) => (
+        {tasks.filter((t) => !t.goalId).map((task) => (
           <TaskCard
             key={task.id}
             task={task}
