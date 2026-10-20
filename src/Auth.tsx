@@ -22,22 +22,22 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="mx-auto max-w-sm rounded-2xl bg-white p-6 shadow">
-        <h1 className="mb-1 text-3xl font-bold text-indigo-600">TinySteps</h1>
-        <p className="mb-6 text-sm text-slate-500">
+    <div className="min-h-screen bg-page p-8 text-ink">
+      <div className="mx-auto max-w-sm rounded-2xl border border-line bg-card p-6 shadow-sm">
+        <h1 className="mb-1 text-3xl font-bold text-brand">TinySteps</h1>
+        <p className="mb-6 text-sm text-muted">
           {mode === 'signin' ? 'Welcome back.' : 'Create your account.'}
         </p>
 
         <input
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2"
+          className="mb-3 w-full rounded-lg border border-line bg-card px-3 py-2 text-ink placeholder:text-muted"
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
         <input
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2"
+          className="mb-3 w-full rounded-lg border border-line bg-card px-3 py-2 text-ink placeholder:text-muted"
           type="password"
           placeholder="Password (6+ characters)"
           value={password}
@@ -46,17 +46,17 @@ export default function Auth() {
         />
 
         <button
-          className="w-full rounded-lg bg-indigo-600 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="w-full rounded-lg bg-brand-solid py-2 text-white hover:opacity-90 disabled:opacity-50"
           onClick={submit}
           disabled={busy}
         >
           {mode === 'signin' ? 'Sign in' : 'Sign up'}
         </button>
 
-        {message && <p className="mt-3 text-sm text-rose-600">{message}</p>}
+        {message && <p className="mt-3 text-sm text-danger-ink">{message}</p>}
 
         <button
-          className="mt-4 text-sm text-slate-500 underline"
+          className="mt-4 text-sm text-muted underline"
           onClick={() => {
             setMode(mode === 'signin' ? 'signup' : 'signin')
             setMessage('')
